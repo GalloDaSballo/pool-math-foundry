@@ -7,3 +7,7 @@ forge test --fork-url https://opt-mainnet.g.alchemy.com/v2/DD7MXvqyqzeyELDMrbPuu
 forge test --fork-url https://opt-mainnet.g.alchemy.com/v2/DD7MXvqyqzeyELDMrbPuuIFMtMAtvzZw -vv
 
 Remember to use `-vv` (only 2) so you only see logs from us
+
+
+
+forge test --match-test test_canDeploy --fork-url https://opt-mainnet.g.alchemy.com/v2/DD7MXvqyqzeyELDMrbPuuIFMtMAtvzZw -vv
