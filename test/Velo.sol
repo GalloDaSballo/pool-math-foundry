@@ -3,23 +3,11 @@ pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
-import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import "./tERC20.sol";
 
 // Token A
 // Token B
-
-contract tERC20 is ERC20 {
-    uint8 public immutable _decimals;
-    constructor(string memory name, string memory symbol, uint8 __decimals) ERC20(name, symbol) {
-        _decimals = __decimals;
-
-        _mint(msg.sender, 1e36);
-    }
-
-    function decimals() public view override returns (uint8) {
-        return _decimals;
-    }
-}
+// NOTE: Must be on OP FORK
 
 interface IFactory {
     function createPair(address tokenA, address tokenB, bool stable) external returns (address pair);
