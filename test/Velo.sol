@@ -52,14 +52,15 @@ contract VeloStable is Test {
 
     // VELO VARIABLE
     function test_USDC_WETH() public {
-        // Assumption is we always swap
         console2.log("Creating USDC-ETH Pool");
         uint256 USDC_IN = 3296185590291;
         uint8 USDC_DECIMALS = 6;
-        uint8 WETH_DECIMALS = 18;
+
         uint256 WETH_IN = 1817723253459044368326;
+        uint8 WETH_DECIMALS = 18;
         // Not stable
-        (address poolUSDCETH, address USDC, address WETH) = _setupNewPool(false, USDC_IN, USDC_DECIMALS, WETH_IN, WETH_DECIMALS);
+        (address poolUSDCETH, address USDC, address WETH) =
+            _setupNewPool(false, USDC_IN, USDC_DECIMALS, WETH_IN, WETH_DECIMALS);
 
         // Let's do amounts and swaps
         uint256[] memory amountsFromUSDC = new uint256[](5);
@@ -70,7 +71,7 @@ contract VeloStable is Test {
         amountsFromUSDC[4] = _addDecimals(25_000_000, USDC_DECIMALS);
 
         IPool asPool = IPool(poolUSDCETH);
-        for(uint256 i; i < amountsFromUSDC.length; i++) {
+        for (uint256 i; i < amountsFromUSDC.length; i++) {
             uint256 amountIn = amountsFromUSDC[i];
             console2.log("USDC i", i);
             console2.log("USDC amountIn", amountIn);
@@ -79,14 +80,16 @@ contract VeloStable is Test {
     }
 
     function test_USDC_WBTC() public {
-        // Assumption is we always swap
         console2.log("Creating USDC-test_USDC_WBTC Pool");
         uint256 USDC_IN = 2530086913;
         uint8 USDC_DECIMALS = 6;
-        uint8 WBTC_DECIMALS = 18;
+
         uint256 WBTC_IN = 9243860;
+        uint8 WBTC_DECIMALS = 18;
+
         // Not stable
-        (address poolUSDCETH, address USDC, address WBTC) = _setupNewPool(false, USDC_IN, USDC_DECIMALS, WBTC_IN, WBTC_DECIMALS);
+        (address poolUSDCETH, address USDC, address WBTC) =
+            _setupNewPool(false, USDC_IN, USDC_DECIMALS, WBTC_IN, WBTC_DECIMALS);
 
         // Let's do amounts and swaps
         uint256[] memory amountsFromUSDC = new uint256[](7);
@@ -99,7 +102,7 @@ contract VeloStable is Test {
         amountsFromUSDC[6] = _addDecimals(5_000_000, USDC_DECIMALS);
 
         IPool asPool = IPool(poolUSDCETH);
-        for(uint256 i; i < amountsFromUSDC.length; i++) {
+        for (uint256 i; i < amountsFromUSDC.length; i++) {
             uint256 amountIn = amountsFromUSDC[i];
             console2.log("USDC i", i);
             console2.log("USDC amountIn", amountIn);
@@ -114,7 +117,8 @@ contract VeloStable is Test {
         uint256 USDC_IN = 1378798585397;
         uint8 USDC_DECIMALS = 6;
         uint256 USDT_IN = 1204218837708;
-        (address poolUSDCUSDT, address USDC, address USDT) = _setupNewPool(true, USDC_IN, USDC_DECIMALS, USDT_IN, USDC_DECIMALS);
+        (address poolUSDCUSDT, address USDC, address USDT) =
+            _setupNewPool(true, USDC_IN, USDC_DECIMALS, USDT_IN, USDC_DECIMALS);
 
         // Let's do amounts and swaps
         uint256[] memory amountsFromUSDC = new uint256[](5);
@@ -125,7 +129,7 @@ contract VeloStable is Test {
         amountsFromUSDC[4] = _addDecimals(25_000_000, USDC_DECIMALS);
 
         IPool asPool = IPool(poolUSDCUSDT);
-        for(uint256 i; i < amountsFromUSDC.length; i++) {
+        for (uint256 i; i < amountsFromUSDC.length; i++) {
             uint256 amountIn = amountsFromUSDC[i];
             console2.log("USDC i", i);
             console2.log("USDC amountIn", amountIn);
