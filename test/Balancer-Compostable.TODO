@@ -1,0 +1,198 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.13;
+
+import "forge-std/Test.sol";
+import "forge-std/console2.sol";
+import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+
+// Token A
+// Token B
+// NOTE: Must be on OP Fork
+// NOTE: We use Compostable since it's same math but without rate provider
+// When comparing pools with rates, you can adjust the values before
+
+// Vault: 0xba12222222228d8ba445958a75a0704d566bf2c8
+// https://optimistic.etherscan.io/address/0xba12222222228d8ba445958a75a0704d566bf2c8
+
+// Factory: 0xe2e901ab09f37884ba31622df3ca7fc19aa443be
+// https://optimistic.etherscan.io/address/0xe2e901ab09f37884ba31622df3ca7fc19aa443be
+
+// Settings for Pool scraped from
+// https://optimistic.etherscan.io/tx/0x6409b38ffe5a647a44cabe322380ca81f37ffa4bead674bdb49bff96814a58bc
+// Go and grab them from there
+
+
+
+contract tERC20 is ERC20 {
+    uint8 public immutable _decimals;
+    constructor(string memory name, string memory symbol, uint8 __decimals) ERC20(name, symbol) {
+        _decimals = __decimals;
+
+        _mint(msg.sender, 1e36);
+    }
+
+    function decimals() public view override returns (uint8) {
+        return _decimals;
+    }
+}
+
+
+interface IFactory {
+    function create(
+        string memory name,
+        string memory symbol,
+        IERC20[] memory tokens,
+        uint256 amplificationParameter,
+        IRateProvider[] memory rateProviders,
+        uint256[] memory tokenRateCacheDurations,
+        bool[] memory exemptFromYieldProtocolFeeFlags,
+        uint256 swapFeePercentage,
+        address owner
+    ) external returns (address);
+}
+// Token A
+// Token B
+// Decimal A
+// Decimal B
+// Amount A
+// AmountB
+// RateA
+// Rate B
+
+// TODO
+
+function deployPool(uint256 ) {
+
+}
+
+// Rate provider for compostable
+contract FakeRateProvider {
+    uint256 public getRate = 1e18;
+
+    function setRate(uint256 newRate) external {
+        getRate = newRate;
+    }
+}
+
+interface IPool {
+    function mint(address to) external returns (uint256 liquidity);
+    function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256);
+}
+
+contract VeloStable is Test {
+    uint256 MAX_BPS = 10_000;
+
+    IFactory factory = IFactory(0xe2E901AB09f37884BA31622dF3Ca7FC19AA443Be);
+
+    address owner = address(123);
+
+    function setUp() public {}
+
+    function _setupNewPool(bool stable, uint256 amountA, uint8 decimalsA, uint256 amountB, uint8 decimalsB)
+        internal
+        returns (address newPool, address firstToken, address secondToken)
+    {
+        // Deploy 2 mock tokens
+        vm.startPrank(owner);
+        tERC20 tokenA = new tERC20("A", "A", decimalsA);
+
+        tERC20 tokenB = new tERC20("B", "B", decimalsB);
+
+        // Stable is false
+        newPool = factory.createPair(address(tokenA), address(tokenB), stable);
+
+        tokenA.transfer(newPool, amountA);
+        tokenB.transfer(newPool, amountB);
+
+        IPool(newPool).mint(owner);
+
+        return (newPool, address(tokenA), address(tokenB));
+    }
+
+    // VELO VARIABLE
+    function test_USDC_WETH() public {
+        // Assumption is we always swap
+        console2.log("Creating USDC-ETH Pool");
+        uint256 USDC_IN = 3296185590291;
+        uint8 USDC_DECIMALS = 6;
+        uint8 WETH_DECIMALS = 18;
+        uint256 WETH_IN = 1817723253459044368326;
+        // Not stable
+        (address poolUSDCETH, address USDC, address WETH) = _setupNewPool(false, USDC_IN, USDC_DECIMALS, WETH_IN, WETH_DECIMALS);
+
+        // Let's do amounts and swaps
+        uint256[] memory amountsFromUSDC = new uint256[](5);
+        amountsFromUSDC[0] = _addDecimals(100, USDC_DECIMALS);
+        amountsFromUSDC[1] = _addDecimals(10000, USDC_DECIMALS);
+        amountsFromUSDC[2] = _addDecimals(1_000_000, USDC_DECIMALS);
+        amountsFromUSDC[3] = _addDecimals(5_000_000, USDC_DECIMALS);
+        amountsFromUSDC[4] = _addDecimals(25_000_000, USDC_DECIMALS);
+
+        IPool asPool = IPool(poolUSDCETH);
+        for(uint256 i; i < amountsFromUSDC.length; i++) {
+            uint256 amountIn = amountsFromUSDC[i];
+            console2.log("USDC i", i);
+            console2.log("USDC amountIn", amountIn);
+            console2.log("WETH amountOut", asPool.getAmountOut(amountIn, USDC));
+        }
+    }
+
+    function test_USDC_WBTC() public {
+        // Assumption is we always swap
+        console2.log("Creating USDC-test_USDC_WBTC Pool");
+        uint256 USDC_IN = 2530086913;
+        uint8 USDC_DECIMALS = 6;
+        uint8 WBTC_DECIMALS = 18;
+        uint256 WBTC_IN = 9243860;
+        // Not stable
+        (address poolUSDCETH, address USDC, address WBTC) = _setupNewPool(false, USDC_IN, USDC_DECIMALS, WBTC_IN, WBTC_DECIMALS);
+
+        // Let's do amounts and swaps
+        uint256[] memory amountsFromUSDC = new uint256[](7);
+        amountsFromUSDC[0] = _addDecimals(100, USDC_DECIMALS);
+        amountsFromUSDC[1] = _addDecimals(2500, USDC_DECIMALS);
+        amountsFromUSDC[2] = _addDecimals(5000, USDC_DECIMALS);
+        amountsFromUSDC[3] = _addDecimals(75000, USDC_DECIMALS);
+        amountsFromUSDC[4] = _addDecimals(10000, USDC_DECIMALS);
+        amountsFromUSDC[5] = _addDecimals(1_000_000, USDC_DECIMALS);
+        amountsFromUSDC[6] = _addDecimals(5_000_000, USDC_DECIMALS);
+
+        IPool asPool = IPool(poolUSDCETH);
+        for(uint256 i; i < amountsFromUSDC.length; i++) {
+            uint256 amountIn = amountsFromUSDC[i];
+            console2.log("USDC i", i);
+            console2.log("USDC amountIn", amountIn);
+            console2.log("WBTC amountOut", asPool.getAmountOut(amountIn, USDC));
+        }
+    }
+
+    // VELO STABLE
+    function test_USDC_USDT() public {
+        // Assumption is we always swap
+        console2.log("Creating USDC-USDT Pool");
+        uint256 USDC_IN = 1378798585397;
+        uint8 USDC_DECIMALS = 6;
+        uint256 USDT_IN = 1204218837708;
+        (address poolUSDCUSDT, address USDC, address USDT) = _setupNewPool(true, USDC_IN, USDC_DECIMALS, USDT_IN, USDC_DECIMALS);
+
+        // Let's do amounts and swaps
+        uint256[] memory amountsFromUSDC = new uint256[](5);
+        amountsFromUSDC[0] = _addDecimals(100, USDC_DECIMALS);
+        amountsFromUSDC[1] = _addDecimals(10000, USDC_DECIMALS);
+        amountsFromUSDC[2] = _addDecimals(1_000_000, USDC_DECIMALS);
+        amountsFromUSDC[3] = _addDecimals(5_000_000, USDC_DECIMALS);
+        amountsFromUSDC[4] = _addDecimals(25_000_000, USDC_DECIMALS);
+
+        IPool asPool = IPool(poolUSDCUSDT);
+        for(uint256 i; i < amountsFromUSDC.length; i++) {
+            uint256 amountIn = amountsFromUSDC[i];
+            console2.log("USDC i", i);
+            console2.log("USDC amountIn", amountIn);
+            console2.log("USDT amountOut", asPool.getAmountOut(amountIn, USDC));
+        }
+    }
+
+    function _addDecimals(uint256 value, uint256 decimals) internal pure returns (uint256) {
+        return value * 10 ** decimals;
+    }
+}
