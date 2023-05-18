@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 import "forge-std/console2.sol";
-import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+import "./tERC20.sol";
 
 // Token A
 // Token B
@@ -20,22 +20,6 @@ import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 // Settings for Pool scraped from
 // https://optimistic.etherscan.io/tx/0x6409b38ffe5a647a44cabe322380ca81f37ffa4bead674bdb49bff96814a58bc
 // Go and grab them from there
-
-
-
-contract tERC20 is ERC20 {
-    uint8 public immutable _decimals;
-    constructor(string memory name, string memory symbol, uint8 __decimals) ERC20(name, symbol) {
-        _decimals = __decimals;
-
-        _mint(msg.sender, 1e36);
-    }
-
-    function decimals() public view override returns (uint8) {
-        return _decimals;
-    }
-}
-
 
 interface IFactory {
     function create(
@@ -59,8 +43,6 @@ interface IFactory {
 // RateA
 // Rate B
 
-
-
 // Rate provider for compostable
 contract FakeRateProvider {
     uint256 public getRate = 1e18;
@@ -73,6 +55,33 @@ contract FakeRateProvider {
 interface IPool {
     function mint(address to) external returns (uint256 liquidity);
     function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256);
+
+    enum SwapKind {
+        GIVEN_IN,
+        GIVEN_OUT
+    }
+
+    struct BatchSwapStep {
+        bytes32 poolId;
+        uint256 assetInIndex;
+        uint256 assetOutIndex;
+        uint256 amount;
+        bytes userData;
+    }
+
+    struct FundManagement {
+        address sender;
+        bool fromInternalBalance;
+        address payable recipient;
+        bool toInternalBalance;
+    }
+
+    function queryBatchSwap(
+        SwapKind kind,
+        BatchSwapStep[] memory swaps,
+        address[] memory assets, // Note: same encoding
+        FundManagement memory funds
+    ) external returns (int256[] memory);
 }
 
 contract BalancerStable is Test {
@@ -85,15 +94,15 @@ contract BalancerStable is Test {
     function setUp() public {}
 
     struct TokensAndRates {
-        uint256 amountA; 
-        uint8 decimalsA; 
-        uint256 amountB; 
-        uint8 decimalsB; 
+        uint256 amountA;
+        uint8 decimalsA;
+        uint256 amountB;
+        uint8 decimalsB;
         uint256 rateA;
         uint256 rateB;
     }
 
-    function _setupNewPool(TokensAndRates memory settings )
+    function _setupNewPool(TokensAndRates memory settings)
         internal
         returns (address newPool, address firstToken, address secondToken)
     {
@@ -125,26 +134,89 @@ contract BalancerStable is Test {
             factory.create("Pool", "POOL", tokens, 570, rates, durations, set, 100000000000000, address(0));
         }
 
-        
+        // TODO: We need to add liquidity here
+
+        // TODO: We need Pool id???
 
         return (newPool, address(tokenA), address(tokenB));
     }
 
-    // VELO VARIABLE
-    function test_USDC_WETH() public {
+    /**
+     * https://optimistic.etherscan.io/address/0xba12222222228d8ba445958a75a0704d566bf2c8#readContract
+     *     getPoolTokens
+     *     0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b
+     *
+     *     1063322810377902132666,1394603632644752706329
+     *
+     *     getRateProviders
+     *     CL
+     *     -> getRATE
+     *     1124504367992424664
+     */
+
+    function test_wstETH_WETH() public {
         // Assumption is we always swap
-        console2.log("Creating TODO Pool");
-        _setupNewPool(
+        console2.log("Creating wstETH WETH Pool");
+
+        uint256 WST_ETH_BAL = 1063322810377902132666;
+        uint256 WST_ETH_RATE = 1124504367992424664;
+
+        uint256 WETH_BAL = 1063322810377902132666;
+        uint8 DECIMALS = 18;
+
+        (address balPool,, address WETH) = _setupNewPool(
             TokensAndRates(
-                10, // amtA
-                18, // decimalsA
-                10,
-                18,
-                1e18, // RateA
+                WST_ETH_BAL, // amtA
+                DECIMALS, // decimalsA
+                WETH_BAL,
+                DECIMALS,
+                WST_ETH_RATE, // RateA
                 1e18 // RateB
             )
         );
+
+        // Let's do amounts and swaps
+        // Liquidity for this pair is up to 150 WSTETH
+        uint256[] memory amountsFromWstETH = new uint256[](5);
+        amountsFromWstETH[0] = _addDecimals(1, DECIMALS);
+        amountsFromWstETH[1] = _addDecimals(10, DECIMALS);
+        amountsFromWstETH[2] = _addDecimals(50, DECIMALS);
+        amountsFromWstETH[3] = _addDecimals(100, DECIMALS);
+        amountsFromWstETH[4] = _addDecimals(150, DECIMALS);
+
+        IPool asPool = IPool(balPool);
+
+        for (uint256 i; i < amountsFromWstETH.length; i++) {
+            uint256 amountIn = amountsFromWstETH[i];
+            console2.log("wstETH i", i);
+            console2.log("wstETH amountIn (normalized)", amountIn);
+            _balSwap(asPool, owner, amountIn, WETH);
+        }
     }
+
+    function _balSwap(IPool pool, address user, uint256 amountIn, address tokenOut) internal returns (uint256) {
+        vm.startPrank(user);
+        bytes32 POOL_ID = bytes32(0);
+
+        IPool.BatchSwapStep[] memory steps = new IPool.BatchSwapStep[](1);
+        steps[0] = IPool.BatchSwapStep(
+            POOL_ID,
+            0,
+            1,
+            amountIn,
+            abi.encode("") // Empty user data
+        );
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenOut;
+
+        pool.queryBatchSwap(
+            IPool.SwapKind.GIVEN_IN, steps, tokens, IPool.FundManagement(user, false, payable(user), false)
+        );
+
+        vm.stopPrank();
+    }
+
     function _addDecimals(uint256 value, uint256 decimals) internal pure returns (uint256) {
         return value * 10 ** decimals;
     }
