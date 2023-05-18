@@ -5,21 +5,12 @@ import "forge-std/Test.sol";
 import "forge-std/console2.sol";
 import "./tERC20.sol";
 
-// Token A
-// Token B
-// NOTE: Must be on OP Fork
-// NOTE: We use Compostable since it's same math but without rate provider
-// When comparing pools with rates, you can adjust the values before
-
-// Vault: 0xba12222222228d8ba445958a75a0704d566bf2c8
-// https://optimistic.etherscan.io/address/0xba12222222228d8ba445958a75a0704d566bf2c8
-
-// Factory: 0xe2e901ab09f37884ba31622df3ca7fc19aa443be
-// https://optimistic.etherscan.io/address/0xe2e901ab09f37884ba31622df3ca7fc19aa443be
-
-// Settings for Pool scraped from
-// https://optimistic.etherscan.io/tx/0x6409b38ffe5a647a44cabe322380ca81f37ffa4bead674bdb49bff96814a58bc
-// Go and grab them from there
+/**
+    Note on Balancer work
+    Due to extra complexity, we fork directly and perform the swaps
+    This means we are just getting the spot liquidity values
+    Tests will be less thorough, but they will demonstrate that we can match real values
+ */
 
 interface IFactory {
     function create(
@@ -88,6 +79,7 @@ contract BalancerStable is Test {
     uint256 MAX_BPS = 10_000;
 
     IFactory factory = IFactory(0xe2E901AB09f37884BA31622dF3Ca7FC19AA443Be);
+    IPool vault = IPool(0xBA12222222228d8Ba445958a75a0704d566BF2C8);
 
     address owner = address(123);
 
@@ -102,44 +94,6 @@ contract BalancerStable is Test {
         uint256 rateB;
     }
 
-    function _setupNewPool(TokensAndRates memory settings)
-        internal
-        returns (address newPool, address firstToken, address secondToken)
-    {
-        // Deploy 2 mock tokens
-        vm.startPrank(owner);
-        tERC20 tokenA = new tERC20("A", "A", settings.decimalsA);
-        tERC20 tokenB = new tERC20("B", "B", settings.decimalsB);
-
-        // Deploy the pool
-        // Scope due to SO
-        {
-            address[] memory tokens = new address[](2);
-            tokens[0] = address(tokenA) > address(tokenB) ? address(tokenB) : address(tokenA);
-            tokens[1] = address(tokenA) > address(tokenB) ? address(tokenA) : address(tokenB);
-
-            address[] memory rates = new address[](2);
-            rates[0] = address(new FakeRateProvider(settings.rateA));
-            rates[1] = address(new FakeRateProvider(settings.rateB));
-
-            uint256[] memory durations = new uint256[](2);
-            durations[0] = 1800;
-            durations[1] = 1800;
-
-            bool[] memory set = new bool[](2);
-            set[0] = false;
-            set[1] = false;
-
-            // Deploy new pool
-            factory.create("Pool", "POOL", tokens, 570, rates, durations, set, 100000000000000, address(0));
-        }
-
-        // TODO: We need to add liquidity here
-
-        // TODO: We need Pool id???
-
-        return (newPool, address(tokenA), address(tokenB));
-    }
 
     /**
      * https://optimistic.etherscan.io/address/0xba12222222228d8ba445958a75a0704d566bf2c8#readContract
@@ -164,16 +118,16 @@ contract BalancerStable is Test {
         uint256 WETH_BAL = 1063322810377902132666;
         uint8 DECIMALS = 18;
 
-        (address balPool,, address WETH) = _setupNewPool(
-            TokensAndRates(
-                WST_ETH_BAL, // amtA
-                DECIMALS, // decimalsA
-                WETH_BAL,
-                DECIMALS,
-                WST_ETH_RATE, // RateA
-                1e18 // RateB
-            )
-        );
+        // Get whale
+        // Have whale donate tokens
+        address WSTETH = 0x1F32b1c2345538c0c6f582fCB022739c4A194Ebb;
+        address WETH = 0x4200000000000000000000000000000000000006;
+
+        address WHALE = 0xc45A479877e1e9Dfe9FcD4056c699575a1045dAA;
+        vm.startPrank(WHALE);
+        tERC20(WSTETH).transfer(owner, _addDecimals(150, DECIMALS));
+        vm.stopPrank();
+
 
         // Let's do amounts and swaps
         // Liquidity for this pair is up to 150 WSTETH
@@ -184,37 +138,51 @@ contract BalancerStable is Test {
         amountsFromWstETH[3] = _addDecimals(100, DECIMALS);
         amountsFromWstETH[4] = _addDecimals(150, DECIMALS);
 
-        IPool asPool = IPool(balPool);
+        bytes32 POOL_ID = bytes32(0x7b50775383d3d6f0215a8f290f2c9e2eebbeceb200020000000000000000008b);
 
         for (uint256 i; i < amountsFromWstETH.length; i++) {
             uint256 amountIn = amountsFromWstETH[i];
             console2.log("wstETH i", i);
-            console2.log("wstETH amountIn (normalized)", amountIn);
-            _balSwap(asPool, owner, amountIn, WETH);
+            console2.log("wstETH amountIn (raw)", amountIn);
+            uint256 res = _balSwap(POOL_ID, owner, amountIn, WSTETH, WETH);
+            console2.log("WETH amountOut (raw)", res);
         }
     }
 
-    function _balSwap(IPool pool, address user, uint256 amountIn, address tokenOut) internal returns (uint256) {
+    function _balSwap(bytes32 poolId, address user, uint256 amountIn, address tokenIn, address tokenOut) internal returns (uint256) {
         vm.startPrank(user);
-        bytes32 POOL_ID = bytes32(0);
+
+        tERC20(tokenIn).approve(address(vault), amountIn);
+
 
         IPool.BatchSwapStep[] memory steps = new IPool.BatchSwapStep[](1);
         steps[0] = IPool.BatchSwapStep(
-            POOL_ID,
+            poolId,
             0,
             1,
             amountIn,
             abi.encode("") // Empty user data
         );
 
-        address[] memory tokens = new address[](1);
-        tokens[0] = tokenOut;
+        address[] memory tokens = new address[](2);
+        tokens[0] = tokenIn;
+        tokens[1] = tokenOut;
 
-        pool.queryBatchSwap(
+        int256[] memory res = vault.queryBatchSwap(
             IPool.SwapKind.GIVEN_IN, steps, tokens, IPool.FundManagement(user, false, payable(user), false)
         );
 
         vm.stopPrank();
+
+        // Casting is safe if this passes
+        // console2.log("res0", res[0]);
+        // console2.log("res1", res[1]); // For some reason negative means we get those
+
+        if(res[1] > 0) {
+            revert("invalid result");
+        }
+
+        return uint256(-res[1]);
     }
 
     function _addDecimals(uint256 value, uint256 decimals) internal pure returns (uint256) {
